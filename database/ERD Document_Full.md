@@ -1,6 +1,3 @@
-Below is a **comprehensive Postgres schema design** for FSCIP covering Epics A–E. It lists every table (entity), its columns (with types, PKs, FKs, important constraints) and how they relate, so your team can CREATE TABLE straight into SQL.
-
----
 
 ## 🗺️ 1. Schema Overview & ERD
 

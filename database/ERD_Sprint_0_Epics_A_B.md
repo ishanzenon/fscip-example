@@ -1,0 +1,12 @@
+```text
+[users]──<user_roles>──[roles]
+   │
+   ├──<otp_codes>
+   ├──<password_reset_tokens>
+   ├──<login_history>
+   ├──<accounts>──<transactions>
+   ├──<alerts>
+   ├──<applications>──<application_documents>──[documents]
+   ├──<search_history>
+   └──<audit_log>
+```

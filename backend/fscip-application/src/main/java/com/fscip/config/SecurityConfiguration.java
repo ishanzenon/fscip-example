@@ -1,0 +1,290 @@
+package com.fscip.config;
+
+import com.fscip.security.CustomAuthenticationEntryPoint;
+import com.fscip.security.CustomAccessDeniedHandler;
+import com.fscip.security.JwtAuthenticationConverter;
+import com.fscip.security.RequestLoggingFilter;
+import com.fscip.security.SecurityAuditEventListener;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationProvider;
+import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.time.Duration;
+import java.util.Arrays;
+import java.util.List;
+
+/**
+ * Production-grade Spring Security configuration for FSCIP application
+ * Provides comprehensive security with JWT authentication, CORS, security headers,
+ * and fine-grained authorization controls
+ */
+@Configuration
+@EnableWebSecurity
+@EnableMethodSecurity(prePostEnabled = true, securedEnabled = true, jsr250Enabled = true)
+public class SecurityConfiguration {
+
+    @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}")
+    private String jwtIssuerUri;
+
+    /**
+     * Main security filter chain for API endpoints
+     */
+    @Bean
+    @Order(1)
+    public SecurityFilterChain apiSecurityFilterChain(HttpSecurity http) throws Exception {
+        http
+            .securityMatcher("/api/**")
+            .authorizeHttpRequests(authz -> authz
+                // Public endpoints - no authentication required
+                .requestMatchers(HttpMethod.POST, "/api/auth/otp/request").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/auth/otp/verify").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/auth/refresh").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/health/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/swagger-ui/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/api-docs/**").permitAll()
+                
+                // Identity endpoints - require authentication
+                .requestMatchers("/api/identity/**").authenticated()
+                
+                // Account endpoints - require specific roles
+                .requestMatchers(HttpMethod.GET, "/api/accounts/**").hasAnyRole("USER", "ADMIN", "ANALYST")
+                .requestMatchers(HttpMethod.POST, "/api/accounts/**").hasAnyRole("ADMIN", "OPERATOR")
+                .requestMatchers(HttpMethod.PUT, "/api/accounts/**").hasAnyRole("ADMIN", "OPERATOR")
+                .requestMatchers(HttpMethod.DELETE, "/api/accounts/**").hasRole("ADMIN")
+                
+                // Transaction endpoints - role-based access
+                .requestMatchers(HttpMethod.GET, "/api/transactions/**").hasAnyRole("USER", "ADMIN", "ANALYST")
+                .requestMatchers(HttpMethod.POST, "/api/transactions/**").hasAnyRole("ADMIN", "OPERATOR")
+                
+                // Rules management - admin only
+                .requestMatchers("/api/rules/**").hasRole("ADMIN")
+                
+                // Search endpoints - require specific permissions
+                .requestMatchers("/api/search/**").hasAnyRole("ANALYST", "ADMIN")
+                
+                // Document endpoints - authenticated users
+                .requestMatchers("/api/documents/**").authenticated()
+                
+                // Notification endpoints
+                .requestMatchers("/api/notifications/**").authenticated()
+                
+                // Admin endpoints - admin only
+                .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                
+                // All other API endpoints require authentication
+                .anyRequest().authenticated()
+            )
+            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .oauth2ResourceServer(oauth2 -> oauth2
+                .jwt(jwt -> jwt
+                    .decoder(jwtDecoder())
+                    .jwtAuthenticationConverter(jwtAuthenticationConverter())
+                )
+                .authenticationEntryPoint(customAuthenticationEntryPoint())
+                .accessDeniedHandler(customAccessDeniedHandler())
+            )
+            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+            .csrf(AbstractHttpConfigurer::disable)
+            .addFilterBefore(requestLoggingFilter(), UsernamePasswordAuthenticationFilter.class)
+            .headers(headers -> headers
+                .frameOptions().deny()
+                .contentTypeOptions().and()
+                .httpStrictTransportSecurity(hstsConfig -> hstsConfig
+                    .maxAgeInSeconds(31536000)
+                    .includeSubDomains(true)
+                    // .preload(true) // TODO: Fix deprecated API
+                )
+                .referrerPolicy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN)
+                // TODO: Fix permissions policy API changes
+                // .permissionsPolicy(permissions -> permissions
+                //     .policy("camera", "none")
+                //     .policy("microphone", "none")
+                //     .policy("geolocation", "none")
+                // )
+            );
+
+        return http.build();
+    }
+
+    /**
+     * Default security filter chain - catches all other requests
+     */
+    @Bean
+    @Order(2)
+    public SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
+        http
+            .authorizeHttpRequests(authz -> authz
+                .requestMatchers("/", "/error", "/favicon.ico").permitAll()
+                .anyRequest().authenticated()
+            )
+            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .oauth2ResourceServer(oauth2 -> oauth2
+                .jwt(jwt -> jwt.decoder(jwtDecoder()))
+                .authenticationEntryPoint(customAuthenticationEntryPoint())
+                .accessDeniedHandler(customAccessDeniedHandler())
+            )
+            .csrf(AbstractHttpConfigurer::disable);
+
+        return http.build();
+    }
+
+    /**
+     * Security filter chain for actuator endpoints
+     */
+    @Bean
+    @Order(3)
+    public SecurityFilterChain actuatorSecurityFilterChain(HttpSecurity http) throws Exception {
+        http
+            .securityMatcher("/actuator/**")
+            .authorizeHttpRequests(authz -> authz
+                .requestMatchers("/actuator/health").permitAll()
+                .requestMatchers("/actuator/prometheus").hasRole("ADMIN")
+                .requestMatchers("/actuator/**").hasRole("ADMIN")
+            )
+            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .oauth2ResourceServer(oauth2 -> oauth2
+                .jwt(jwt -> jwt.decoder(jwtDecoder()))
+            )
+            .csrf(AbstractHttpConfigurer::disable);
+
+        return http.build();
+    }
+
+    /**
+     * JWT Decoder configuration
+     */
+    @Bean
+    public JwtDecoder jwtDecoder() {
+        NimbusJwtDecoder jwtDecoder = NimbusJwtDecoder.withIssuerLocation(jwtIssuerUri).build();
+        
+        // Set cache duration for improved performance
+        // TODO: Fix deprecated setClockSkew method
+        // jwtDecoder.setClockSkew(Duration.ofMinutes(1));
+        
+        return jwtDecoder;
+    }
+
+    /**
+     * Custom JWT Authentication Converter for role mapping
+     */
+    @Bean
+    public JwtAuthenticationConverter jwtAuthenticationConverter() {
+        return new JwtAuthenticationConverter();
+    }
+
+    /**
+     * JWT Granted Authorities Converter
+     */
+    @Bean
+    public JwtGrantedAuthoritiesConverter jwtGrantedAuthoritiesConverter() {
+        JwtGrantedAuthoritiesConverter converter = new JwtGrantedAuthoritiesConverter();
+        converter.setAuthorityPrefix("ROLE_");
+        converter.setAuthoritiesClaimName("roles");
+        return converter;
+    }
+
+    /**
+     * JWT Authentication Provider with custom configuration
+     */
+    @Bean
+    public JwtAuthenticationProvider jwtAuthenticationProvider() {
+        JwtAuthenticationProvider provider = new JwtAuthenticationProvider(jwtDecoder());
+        provider.setJwtAuthenticationConverter(jwtAuthenticationConverter());
+        return provider;
+    }
+
+    /**
+     * CORS Configuration
+     */
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        
+        // Allow specific origins in production
+        configuration.setAllowedOriginPatterns(Arrays.asList(
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "https://*.fscip.com"
+        ));
+        
+        configuration.setAllowedMethods(Arrays.asList(
+            HttpMethod.GET.name(),
+            HttpMethod.POST.name(),
+            HttpMethod.PUT.name(),
+            HttpMethod.DELETE.name(),
+            HttpMethod.PATCH.name(),
+            HttpMethod.OPTIONS.name()
+        ));
+        
+        configuration.setAllowedHeaders(Arrays.asList(
+            "Authorization",
+            "Content-Type",
+            "X-Requested-With",
+            "X-CSRF-Token",
+            "Cache-Control"
+        ));
+        
+        configuration.setExposedHeaders(Arrays.asList(
+            "X-Total-Count",
+            "X-Page-Number",
+            "X-Page-Size"
+        ));
+        
+        configuration.setAllowCredentials(true);
+        configuration.setMaxAge(3600L);
+        
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/api/**", configuration);
+        
+        return source;
+    }
+
+    /**
+     * Custom Authentication Entry Point
+     */
+    @Bean
+    public CustomAuthenticationEntryPoint customAuthenticationEntryPoint() {
+        return new CustomAuthenticationEntryPoint();
+    }
+
+    /**
+     * Custom Access Denied Handler
+     */
+    @Bean
+    public CustomAccessDeniedHandler customAccessDeniedHandler() {
+        return new CustomAccessDeniedHandler();
+    }
+
+    /**
+     * Security Audit Event Listener
+     */
+    @Bean
+    public SecurityAuditEventListener securityAuditEventListener() {
+        return new SecurityAuditEventListener();
+    }
+
+    /**
+     * Request Logging Filter
+     */
+    @Bean
+    public RequestLoggingFilter requestLoggingFilter() {
+        return new RequestLoggingFilter();
+    }
+}

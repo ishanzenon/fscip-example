@@ -27,15 +27,20 @@
         <drools.version>8.44.0.Final</drools.version>
         <testcontainers.version>1.19.3</testcontainers.version>
         <openapi.version>2.2.0</openapi.version>
+        <flyway.version>9.22.3</flyway.version>
+        <spotless.version>2.43.0</spotless.version>
+        <spring-cloud-aws.version>3.0.1</spring-cloud-aws.version>
     </properties>
 
     <modules>
         <module>common-lib</module>
-        <module>identity-service</module>
-        <module>account-service</module>
-        <module>rules-service</module>
-        <module>search-service</module>
-        <module>notification-service</module>
+        <module>identity-module</module>
+        <module>account-module</module>
+        <module>rules-module</module>
+        <module>search-module</module>
+        <module>notification-module</module>
+        <module>document-module</module>
+        <module>fscip-application</module>
     </modules>
 
     <dependencyManagement>
@@ -66,28 +71,29 @@
                 <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
                 <version>${openapi.version}</version>
             </dependency>
+            <dependency>
+                <groupId>org.flywaydb</groupId>
+                <artifactId>flyway-core</artifactId>
+                <version>${flyway.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.flywaydb</groupId>
+                <artifactId>flyway-database-postgresql</artifactId>
+                <version>${flyway.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>s3</artifactId>
+                <version>2.20.162</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
-    <dependencies>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-actuator</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-    </dependencies>
+    <!-- No dependencies at parent level - pure aggregator -->
 
     <build>
         <pluginManagement>
             <plugins>
-                <plugin>
-                    <groupId>org.springframework.boot</groupId>
-                    <artifactId>spring-boot-maven-plugin</artifactId>
-                </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-compiler-plugin</artifactId>
@@ -95,6 +101,18 @@
                     <configuration>
                         <source>17</source>
                         <target>17</target>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>com.diffplug.spotless</groupId>
+                    <artifactId>spotless-maven-plugin</artifactId>
+                    <version>${spotless.version}</version>
+                    <configuration>
+                        <java>
+                            <googleJavaFormat>
+                                <version>1.17.0</version>
+                            </googleJavaFormat>
+                        </java>
                     </configuration>
                 </plugin>
             </plugins>

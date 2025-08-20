@@ -73,9 +73,9 @@ CREATE TABLE IF NOT EXISTS user_roles (
 
 -- OTP codes table
 CREATE TABLE IF NOT EXISTS otp_codes (
-    otp_id SERIAL PRIMARY KEY,
+    otp_id BIGSERIAL PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-    otp CHAR(6) NOT NULL,
+    otp VARCHAR(6) NOT NULL,
     expires_at TIMESTAMP NOT NULL,
     attempts INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS otp_codes (
 
 -- Password reset tokens table
 CREATE TABLE IF NOT EXISTS password_reset_tokens (
-    token_id SERIAL PRIMARY KEY,
+    token_id BIGSERIAL PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
     token UUID UNIQUE NOT NULL DEFAULT uuid_generate_v4(),
     expires_at TIMESTAMP NOT NULL,
@@ -93,7 +93,7 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
 
 -- Login history table
 CREATE TABLE IF NOT EXISTS login_history (
-    login_id SERIAL PRIMARY KEY,
+    login_id BIGSERIAL PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
     login_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     ip_address INET,
@@ -163,7 +163,7 @@ CREATE TABLE IF NOT EXISTS applications (
 
 -- Application documents junction table
 CREATE TABLE IF NOT EXISTS application_documents (
-    id SERIAL PRIMARY KEY,
+    id BIGSERIAL PRIMARY KEY,
     application_id UUID NOT NULL REFERENCES applications(application_id) ON DELETE CASCADE,
     document_id UUID NOT NULL REFERENCES documents(document_id) ON DELETE CASCADE,
     UNIQUE(application_id, document_id)
@@ -175,7 +175,7 @@ CREATE TABLE IF NOT EXISTS application_documents (
 
 -- Alerts table (for upcoming payments and notifications)
 CREATE TABLE IF NOT EXISTS alerts (
-    alert_id SERIAL PRIMARY KEY,
+    alert_id BIGSERIAL PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
     account_id UUID REFERENCES accounts(account_id) ON DELETE SET NULL,
     due_date DATE NOT NULL,
@@ -192,7 +192,7 @@ CREATE TABLE IF NOT EXISTS alerts (
 
 -- Search history table
 CREATE TABLE IF NOT EXISTS search_history (
-    history_id SERIAL PRIMARY KEY,
+    history_id BIGSERIAL PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
     query_text TEXT,
     executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -200,7 +200,7 @@ CREATE TABLE IF NOT EXISTS search_history (
 
 -- Audit log table
 CREATE TABLE IF NOT EXISTS audit_log (
-    audit_id SERIAL PRIMARY KEY,
+    audit_id BIGSERIAL PRIMARY KEY,
     actor_id UUID REFERENCES users(user_id) ON DELETE SET NULL,
     event_type VARCHAR(100) NOT NULL,
     resource_type VARCHAR(50) NOT NULL,
@@ -278,14 +278,35 @@ ON accounts(user_id, currency)
 WHERE is_primary = TRUE;
 
 -- =====================================================
--- INITIAL DATA SETUP
+-- COMMENTS FOR DOCUMENTATION
 -- =====================================================
 
--- Insert default roles
-INSERT INTO roles (name, description) VALUES 
-    ('ADMIN', 'System administrator with full access'),
-    ('CUSTOMER', 'Regular customer with limited access'),
-    ('SUPPORT_AGENT', 'Customer support agent'),
-    ('RELATIONSHIP_MANAGER', 'Relationship manager for customers'),
-    ('AUDITOR', 'Auditor with read-only access for compliance')
-ON CONFLICT (name) DO NOTHING;
+COMMENT ON TABLE users IS 'Core user authentication and profile information';
+COMMENT ON TABLE roles IS 'System roles for RBAC';
+COMMENT ON TABLE user_roles IS 'Many-to-many relationship between users and roles';
+COMMENT ON TABLE otp_codes IS 'One-time password codes for 2FA authentication';
+COMMENT ON TABLE password_reset_tokens IS 'Secure tokens for password reset functionality';
+COMMENT ON TABLE login_history IS 'Audit trail of user login attempts and sessions';
+COMMENT ON TABLE accounts IS 'User financial accounts (savings, checking, etc.)';
+COMMENT ON TABLE transactions IS 'Financial transaction history for accounts';
+COMMENT ON TABLE documents IS 'File metadata for uploaded documents stored in S3';
+COMMENT ON TABLE applications IS 'Product applications submitted by users';
+COMMENT ON TABLE application_documents IS 'Documents attached to applications';
+COMMENT ON TABLE alerts IS 'User alerts for payments, notifications, etc.';
+COMMENT ON TABLE search_history IS 'User search query history for analytics';
+COMMENT ON TABLE audit_log IS 'System-wide audit trail for compliance and security';
+
+-- =====================================================
+-- SCHEMA VERSION TRACKING
+-- =====================================================
+
+CREATE TABLE IF NOT EXISTS schema_version (
+    version VARCHAR(50) PRIMARY KEY,
+    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    description TEXT
+);
+
+-- Insert current schema version
+INSERT INTO schema_version (version, description) 
+VALUES ('sprint_0_v1.0', 'Initial schema for Sprint 0 MVP with core entities')
+ON CONFLICT (version) DO NOTHING;

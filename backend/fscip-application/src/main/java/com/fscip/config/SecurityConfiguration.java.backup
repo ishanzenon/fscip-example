@@ -114,14 +114,9 @@ public class SecurityConfiguration {
         return http.build();
     }
 
-    // TEMPORARY: JWT beans disabled for development
-    // Uncomment and configure when implementing proper authentication
-    
-    /*
     /**
      * JWT Decoder configuration
      */
-    /*
     @Bean
     public JwtDecoder jwtDecoder() {
         NimbusJwtDecoder jwtDecoder = NimbusJwtDecoder.withIssuerLocation(jwtIssuerUri).build();
@@ -136,7 +131,6 @@ public class SecurityConfiguration {
     /**
      * Custom JWT Authentication Converter for role mapping
      */
-    /*
     @Bean
     public JwtAuthenticationConverter jwtAuthenticationConverter() {
         return new JwtAuthenticationConverter();
@@ -145,7 +139,6 @@ public class SecurityConfiguration {
     /**
      * JWT Granted Authorities Converter
      */
-    /*
     @Bean
     public JwtGrantedAuthoritiesConverter jwtGrantedAuthoritiesConverter() {
         JwtGrantedAuthoritiesConverter converter = new JwtGrantedAuthoritiesConverter();
@@ -157,14 +150,12 @@ public class SecurityConfiguration {
     /**
      * JWT Authentication Provider with custom configuration
      */
-    /*
     @Bean
     public JwtAuthenticationProvider jwtAuthenticationProvider() {
         JwtAuthenticationProvider provider = new JwtAuthenticationProvider(jwtDecoder());
         provider.setJwtAuthenticationConverter(jwtAuthenticationConverter());
         return provider;
     }
-    */
 
     /**
      * CORS Configuration
